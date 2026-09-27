@@ -1,0 +1,39 @@
+[project]
+name = "asah-segmentation"
+version = "0.1.0"
+description = "Aneurysmal Subarachnoid Hemorrage segmentation on Non-Contrast CT Scans"
+readme = "README.md"
+authors = [
+    { name = "Niccolò Bartolacelli", email = "niccolo.bartolacelli@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "dicom2nifti>=2.6.2",
+    "nibabel>=5.4.2",
+    "nilearn>=0.14.1",
+    "tensorflow>=2.22.0rc0",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
+    "triton-xpu>=3.8.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.14,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-xpu" },
+]
+torchvision = [
+    { index = "pytorch-xpu" },
+]
+# torch-xpu also requires triton–xpu to be resolved explicitly
+triton-xpu = [
+    { index = "pytorch-xpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
