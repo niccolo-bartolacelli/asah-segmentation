@@ -9,8 +9,10 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "dicom2nifti>=2.6.2",
+    "matplotlib>=3.11.2",
     "nibabel>=5.4.2",
     "nilearn>=0.14.1",
+    "numpy>=2.5.3",
     "tensorflow>=2.22.0rc0",
     "torch>=2.14.0",
     "torchvision>=0.29.0",
