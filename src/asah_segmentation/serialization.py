@@ -10,8 +10,6 @@ raw data.
 
 """
 
-import sys
-
 try:
     import tensorflow as tf
     TF_AVAILABLE = True
@@ -58,13 +56,11 @@ def load_legacy_model(path: str) -> ASAHSegmentationNet:
     """
 
     if not TF_AVAILABLE:
-        print("[!] Error: TensorFlow is required to perform legacy model"
-              "weigths conversion.")
-        sys.exit(1)
+        raise ImportError("TensorFlow is required to perform legacy model "
+                          "weights conversion (install the `legacy` extra).")
 
     model = ASAHSegmentationNet()
     model.eval()
-    # TODO: remove hardcoded model spec and update implementation
     with torch.no_grad():
         model(torch.zeros(1, 1, 32, 32))    
     state_dict = model.state_dict()
