@@ -1,32 +1,29 @@
 """ io.py
 
-Utility functions to load volumes from files to usable `Nifti1Image` image
-objects.
+Utility functions to load NIfTI volumes.
 
 Exported Functions:
-* load_volume: loads a volume from a local path or from an already loaded file
-object.
+* load_volume: loads a NIfTI volume from a local path or from a file object.
 
 """
 
 from contextlib import nullcontext
 import gzip
 from io import IOBase
+from os import PathLike
 
 import nibabel as nib
 import numpy as np
 
-def load_volume(src: str | IOBase,
-                v2: bool = False) -> tuple[nib.Nifti1Image | nib.Nifti2Image,
-                                          np.ndarray]:
+
+def load_volume(src: str | PathLike | IOBase,
+                v2: bool = False) -> nib.Nifti1Image | nib.Nifti2Image:
     """
     Loads a volume from a NIfTI file or archive.
-    If you need to load a DICOM volume, consider running preprocess_dicom
-    instead.
 
     Parameters
     ----------
-    param : str or FileObject
+    src : str or PathLike or FileObject
         The path to the volume to load or the already loaded volume
     
     v2 : bool
@@ -35,19 +32,19 @@ def load_volume(src: str | IOBase,
 
     Returns
     -------
-    tuple[Nifti1Image or Nifti2Image, ndarray]
+    Nifti1Image or Nifti2Image
         A NiBabel NIfTI Volume
     """
     image_type = nib.Nifti2Image if v2 else nib.Nifti1Image
 
-    if isinstance(src, str):
+    if isinstance(src, str | PathLike):
         file_img = nib.load(src)
 
         if not isinstance(file_img, image_type):
             raise TypeError(f"Expected a valid NIfTI{2 if v2 else 1} image.")
         
         img = image_type.from_image(file_img)
-        return img, img.get_fdata(dtype=np.float32).copy()
+        return img
 
     src.seek(0)
     is_compressed = src.read(2) == b"\x1f\x8b"
@@ -63,16 +60,14 @@ def load_volume(src: str | IOBase,
         if img.affine is None:
             raise TypeError(f"Expected a valid NIfTI{2 if v2 else 1} image.")      
 
-        data = img.get_fdata(dtype=np.float32).copy()
-
         ret_header = img.header.copy()
         ret_header.set_data_dtype(np.float32)
 
         ret_image = type(img)(
-            data,
+            img.get_fdata(dtype=np.float32).copy(),
             img.affine.copy(),
             header=ret_header,
             extra=img.extra.copy(),
         )
 
-        return ret_image, data
+        return ret_image
