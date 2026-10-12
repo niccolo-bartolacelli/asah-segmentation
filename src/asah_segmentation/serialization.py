@@ -1,6 +1,8 @@
 """ serialization.py
 
-Save/load model checkpoints.
+Deserialize legacy TensorFlow checkpoints.
+Requires TF as a dependency (consider installing with `legacy` optional
+dependencies).
 
 Exported Functions:
 * load_legacy_model: load model checkpoint from legacy TensorFlow
@@ -8,10 +10,17 @@ raw data.
 
 """
 
-from asah_segmentation.model import ASAHSegmentationNet
+import sys
 
-import tensorflow as tf
+try:
+    import tensorflow as tf
+    TF_AVAILABLE = True
+except ImportError:
+    TF_AVAILABLE = False
+
 import torch
+
+from asah_segmentation.model import ASAHSegmentationNet
 
 
 TF_TO_TORCH_BLOCKS = [
@@ -48,7 +57,12 @@ def load_legacy_model(path: str) -> ASAHSegmentationNet:
         The loaded model
     """
 
-    model = ASAHSegmentationNet(num_classes=2)
+    if not TF_AVAILABLE:
+        print("[!] Error: TensorFlow is required to perform legacy model"
+              "weigths conversion.")
+        sys.exit(1)
+
+    model = ASAHSegmentationNet()
     model.eval()
     # TODO: remove hardcoded model spec and update implementation
     with torch.no_grad():
