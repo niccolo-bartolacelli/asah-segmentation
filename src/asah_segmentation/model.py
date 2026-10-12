@@ -12,18 +12,15 @@ segmentation on Non-Contrast CT Scans.
 from itertools import chain
 from typing import Literal
 
-from asah_segmentation.utils import safe_tuple as IF
-
-import numpy as np
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+from asah_segmentation.utils import safe_tuple as IF
 
 
 class ASAHSegmentationNet(nn.Module):
     def __init__(self,
-                 num_classes: int,
+                 num_classes: int = 2,
                  n_features: tuple[int, ...] = (30, 60, 120, 240, 480),
                  dropout_rate: float = 0.0) -> None:
         """
