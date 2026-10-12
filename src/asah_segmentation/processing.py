@@ -257,11 +257,42 @@ class Processor:
             header=self._context.original_header
         )
 
-        tmp_img = nilearn.image.resample_img(
+        r_img = nilearn.image.resample_img(
             img,
             target_affine=self._context.original_affine,
             target_shape=self._context.original_shape,
             interpolation="nearest"
         )
 
-        return tmp_img
+        data = np.asarray(r_img.dataobj)
+        if data.shape != self._context.original_shape:
+            raise RuntimeError(
+                f"Prediction shape {data.shape} does not match input "
+                f"{self._context.original_shape}."
+            )
+
+        labels = np.rint(data).astype(np.uint8)
+        header = self._context.original_header.copy()
+        out = image_type(
+            labels,
+            affine=self._context.original_affine,
+            header=header
+        )
+        out.set_data_dtype(np.uint8)
+        out.header.set_slope_inter(1, 0)
+        out.header["cal_min"] = 0
+        out.header["cal_max"] = int(labels.max(initial=0))
+        out.header["intent_code"] = 1002  # NIFTI_INTENT_LABEL
+        out.header["descrip"] = b"segmentation label map"
+
+        qform, qcode = header.get_qform(coded=True)
+        sform, scode = header.get_sform(coded=True)
+        out.set_qform(
+            qform if qform is not None else self._context.original_affine,
+            int(qcode or 1)
+        )
+        out.set_sform(
+            sform if sform is not None else self._context.original_affine,
+            int(scode or 1)
+        )
+        return out
