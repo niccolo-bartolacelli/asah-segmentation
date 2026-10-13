@@ -18,6 +18,9 @@ import nilearn.image
 import nibabel as nib
 import torch
 
+from asah_segmentation.io import (NiftiVersion, nifti_image_type,
+                                  nifti_version_of)
+
 
 class ImageContext:
     def __init__(self,
@@ -69,7 +72,10 @@ class ImageContext:
         
         Returns
         -------
-        None
+        state : bool
+            Whether the context is valid
+        message : str
+            Error message if the context is not valid, empty string otherwise
 
         Raises
         ------
@@ -110,7 +116,7 @@ class ImageContext:
 
         Notes
         -----
-        N.B. This function internally calls `ImageContext.assert_valid`,
+        N.B. This function internally calls `ImageContext.is_valid`,
         requiring input image header, shape and affine not to be None.
 
         See the function documentation for further reference
@@ -168,7 +174,7 @@ class Processor:
 
 
     @contextmanager
-    def slices_from(self, img: nib.Nifti1Image):
+    def slices_from(self, img: nib.Nifti1Image | nib.Nifti2Image):
         if self._context != None:
             raise ValueError("Context is already initialized")
         
@@ -184,21 +190,24 @@ class Processor:
             self._context = None
 
 
-    def preprocess_volume(self, img: nib.Nifti1Image) -> nib.Nifti1Image:
+    def preprocess_volume(
+            self,
+            img: nib.Nifti1Image | nib.Nifti2Image
+        ) -> nib.Nifti1Image | nib.Nifti2Image:
         """
         Preprocesses a NIfTI volume with the object configuration setup.
-        
+
         For default preprocessing values, see `PreprocessingConfiguration`.
 
         Parameters
         ----------
-        img : Nifti1Image
+        img : Nifti1Image or Nifti2Image
             Source image
-        
+
         Returns
         -------
-        Nifti1Image
-            The preprocessed image
+        Nifti1Image or Nifti2Image
+            The preprocessed image, in the same NIfTI version as `img`
         
         Raises
         ------
@@ -219,7 +228,8 @@ class Processor:
         if self.config.clip:
             data = data.clip(min=self.config.clip[0], max=self.config.clip[1])
 
-        return nib.Nifti1Image(data.astype(self.config.dtype), tmp_img.affine)
+        image_type = nifti_image_type(nifti_version_of(img))
+        return image_type(data.astype(self.config.dtype), tmp_img.affine)
 
 
     def volume_to_slices(
@@ -239,13 +249,41 @@ class Processor:
     def predictions_to_nifti(
             self,
             logits: torch.Tensor,
-            v2: bool = False
+            nifti_version: NiftiVersion | None = None
         ) -> nib.Nifti1Image | nib.Nifti2Image:
+        """
+        Turns per-slice logits into a label map on the source voxel grid.
+
+        Parameters
+        ----------
+        logits : Tensor
+            Logits in (N, 2, H, W) format, one entry per preprocessed slice
+
+        nifti_version : {1, 2}, optional
+            NIfTI version of the returned mask; defaults to the version of
+            the image the context was opened on
+
+        Returns
+        -------
+        Nifti1Image or Nifti2Image
+            `uint8` label map with the source shape, affine, qform and sform
+
+        Raises
+        ------
+        ValueError
+            If no context is open or `nifti_version` is invalid
+        HeaderDataError
+            If the source header cannot be represented in `nifti_version`
+        """
         valid, msg = ImageContext.is_valid(self._context)
         if not valid:
             raise ValueError(msg)
 
-        image_type = nib.Nifti2Image if v2 else nib.Nifti1Image
+        if nifti_version is None:
+            nifti_version = nifti_version_of(self._context.original_header)
+        # The source header is converted by the image constructor when the
+        # versions differ.
+        image_type = nifti_image_type(nifti_version)
 
         labels = logits.argmax(dim=1)
         data = (labels.permute(1, 2, 0)

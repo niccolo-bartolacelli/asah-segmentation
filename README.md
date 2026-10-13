@@ -1,6 +1,6 @@
 # ASAH Segmentation
 
-PyTorch pipeline to perform Aneurysmal Subarachnoid Hemorrage segmentation tasks on Non-Contrast CT Scans.
+PyTorch pipeline to perform Aneurysmal Subarachnoid Hemorrhage segmentation tasks on Non-Contrast CT Scans.
 
 
 ## Acknowledgements
@@ -8,28 +8,61 @@ PyTorch pipeline to perform Aneurysmal Subarachnoid Hemorrage segmentation tasks
 Parts of the source code and the general architecture are inspired or derived from [segment-ncct-sah](https://github.com/athanell/segment-ncct-sah) by [@athanell](https://github.com/athanell), distributed under GPL-3.0 license.
 
 
-## Configuration
-This project was built with torch:xpu extension (for Intel embedded GPU).
-If you wish to run it on different hardware, please edit accordingly in `pyproject.toml` the following lines
-```toml
-[build-system]
-requires = ["uv_build>=0.12.14,<0.13.0"]
-build-backend = "uv_build"
+## Installation
 
-[tool.uv.sources]
-torch = [
-    { index = "pytorch-xpu" },
-]
-torchvision = [
-    { index = "pytorch-xpu" },
-]
-# torch-xpu also requires triton–xpu to be resolved explicitly
-triton-xpu = [
-    { index = "pytorch-xpu" },
-]
+```bash
+uv sync                    # inference: torch, nibabel, nilearn, numpy
+uv sync --extra legacy     # + TensorFlow, only to convert the original checkpoint
+```
 
-[[tool.uv.index]]
-name = "pytorch-xpu"
-url = "https://download.pytorch.org/whl/xpu"
-explicit = true
+
+## Usage
+
+`ASAHSegmenter` is the public, stable interface; everything else in the package
+is an implementation detail that may change between minor releases.
+
+```python
+from asah_segmentation import ASAHSegmenter
+
+segmenter = ASAHSegmenter.from_checkpoint("asah_nonewnet.pt", device="auto")
+mask = segmenter.segment("scan.nii.gz")            # nib.Nifti1Image, uint8
+segmenter.segment_file("scan.nii.gz", "mask.nii.gz")
+print(segmenter.info())                            # provenance (checkpoint SHA-256, device, ...)
+```
+
+The mask is a `uint8` label map (`BACKGROUND_LABEL = 0`, `SAH_LABEL = 1`) on the
+input's voxel grid: same shape, affine, qform and sform. Inputs can be a path, a
+file object or a loaded NIfTI image; a singleton 4th axis is dropped.
+
+The NIfTI format is an explicit choice, `nifti_version=1` (default) or `2`, set
+when building the segmenter: NIfTI-1 and NIfTI-2 inputs are both accepted and
+converted to that version (in either direction), and the mask is returned in
+it. Only a NIfTI-2 volume exceeding NIfTI-1 limits (a dimension above 32767)
+cannot be read as NIfTI-1. The published model, like the original TensorFlow
+implementation, was validated on NIfTI-1 only.
+
+Errors are reported as `VolumeError` (bad input) and `CheckpointError` (bad
+weights).
+
+### Converting the original TensorFlow checkpoint
+
+Once, with the `legacy` extra installed:
+
+```python
+from asah_segmentation import ASAHSegmenter
+
+ASAHSegmenter.from_legacy_checkpoint("path/to/tf_checkpoint", device="cpu") \
+    .save_checkpoint("asah_nonewnet.pt")
+```
+
+Production code then only needs `from_checkpoint`.
+
+
+## Development
+
+Tests use the standard library `unittest` (no extra dependencies), with random
+weights and synthetic volumes:
+
+```bash
+uv run python -m unittest
 ```

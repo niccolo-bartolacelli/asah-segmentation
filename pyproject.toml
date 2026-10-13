@@ -1,7 +1,7 @@
 [project]
 name = "asah-segmentation"
-version = "0.1.0"
-description = "Aneurysmal Subarachnoid Hemorrage segmentation on Non-Contrast CT Scans"
+version = "0.2.0"
+description = "Aneurysmal Subarachnoid Hemorrhage segmentation on Non-Contrast CT Scans"
 readme = "README.md"
 authors = [
     { name = "Niccolò Bartolacelli", email = "niccolo.bartolacelli@gmail.com" }

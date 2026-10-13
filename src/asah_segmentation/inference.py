@@ -11,6 +11,7 @@ import nibabel as nib
 import torch
 import torch.nn as nn
 
+from asah_segmentation.io import NiftiVersion
 from asah_segmentation.processing import PreprocessingConfiguration, Processor
 
 
@@ -20,7 +21,8 @@ def predict_volume(
         volume: nib.Nifti1Image | nib.Nifti2Image,
         device: torch.device,
         batch_size: int = 16,
-        config: PreprocessingConfiguration | None = None
+        config: PreprocessingConfiguration | None = None,
+        nifti_version: NiftiVersion | None = None
     ) -> nib.Nifti1Image | nib.Nifti2Image:
     """
     Predicts NIfTI volume segmentation mask.
@@ -44,7 +46,11 @@ def predict_volume(
         Preprocessing requirements (see
         `asah_segmentation.processing.PreprocessingConfiguration` for further
         reference)
-    
+
+    nifti_version : {1, 2}, optional
+        NIfTI version of the returned mask; defaults to the version of
+        `volume`
+
     Returns
     -------
     Nifti1Image or Nifti2Image
@@ -72,4 +78,4 @@ def predict_volume(
             logits[start:start + batch_size] = model(batch).to(
                 dtype=torch.float32).cpu()
 
-        return processor.predictions_to_nifti(logits)
+        return processor.predictions_to_nifti(logits, nifti_version)
