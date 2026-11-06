@@ -10,10 +10,37 @@ Parts of the source code and the general architecture are inspired or derived fr
 
 ## Installation
 
+Requires Python 3.14 (see `requires-python` and `.python-version`).
+
+The repository holds one package, `asah-segmentation` (import name
+`asah_segmentation`), with production inference only: `ASAHSegmenter`, the
+model, pre/post-processing and NIfTI I/O. Its dependencies are torch,
+nibabel, nilearn and numpy.
+
+Development tooling lives next to it, outside the package, and is never
+shipped or imported by it (the test suite enforces this):
+
+| Path | Contents |
+|---|---|
+| `eval/` | evaluation CLI (`evaluate.py`) and segmentation metrics (`metrics.py`) |
+| `scripts/` | one-off legacy TensorFlow checkpoint conversion |
+| `tests/` | unit tests (`tests/core`: the package, `tests/dev`: the tooling) |
+| `weights/` | local model weights, git-ignored |
+
 ```bash
-uv sync                    # inference: torch, nibabel, nilearn, numpy
-uv sync --extra legacy     # + TensorFlow, only to convert the original checkpoint
+# Production: the package alone
+pip install asah-segmentation        # or, from this repository:
+uv sync --no-dev                     # (add --frozen in deployments)
+
+# Development
+uv sync                              # the package; eval/ and tests/ need nothing more
+uv sync --group legacy               # + TensorFlow, only to convert the original checkpoint
 ```
+
+The `legacy` dependency group is local to this repository: dependency groups
+are not part of the published package metadata, so a production install never
+pulls TensorFlow in. Building the project (`uv build`) produces a wheel with
+`asah_segmentation` only.
 
 
 ## Usage
@@ -46,23 +73,59 @@ weights).
 
 ### Converting the original TensorFlow checkpoint
 
-Once, with the `legacy` extra installed:
+This is a one-off development task. Once, after `uv sync --group legacy`, from
+the repository root:
 
-```python
-from asah_segmentation import ASAHSegmenter
-
-ASAHSegmenter.from_legacy_checkpoint("path/to/tf_checkpoint", device="cpu") \
-    .save_checkpoint("asah_nonewnet.pt")
+```bash
+uv run --group legacy python scripts/convert_legacy_checkpoint.py  path/to/tf_checkpoint weights/asah_nonewnet.pt
 ```
 
-Production code then only needs `from_checkpoint`.
+The script writes a PyTorch `state_dict`; production code then only needs
+`ASAHSegmenter.from_checkpoint("weights/asah_nonewnet.pt")`.
 
 
 ## Development
 
+New code goes in `src/asah_segmentation` only if production inference needs
+it; everything else (training, datasets, augmentation, evaluation) stays out
+of the package, in `eval/`, `scripts/` or a similar top-level directory, and
+is imported from the repository root (e.g. `from eval.metrics import
+dice_coefficient`).
+
 Tests use the standard library `unittest` (no extra dependencies), with random
-weights and synthetic volumes:
+weights and synthetic volumes. `tests/core` covers the production package and
+also runs on a production-only environment; `tests/dev` covers `eval/` and
+`scripts/` (TensorFlow is faked, so it is not needed):
 
 ```bash
-uv run python -m unittest
+uv run python -m unittest                                          # everything
+uv run --no-dev python -m unittest discover -s tests/core -t .     # core, production-only environment
+```
+
+### Evaluation
+
+`eval/evaluate.py` segments every scan (`*.nii`, `*.nii.gz`) in a folder with
+the real checkpoint and scores it against the same-named label in another
+folder with the Dice coefficient. Scans and weights are never committed: put
+the weights in the git-ignored `weights/` folder.
+
+```bash
+uv run python eval/evaluate.py SOURCE TARGET                       # weights/asah_nonewnet.pt
+uv run python eval/evaluate.py SOURCE TARGET --device cpu --json dice.json
+```
+
+Options: `--checkpoint` (default `weights/asah_nonewnet.pt`), `--device`
+(default `auto`), `--batch-size` (default 16), `--label` (default: every
+non-zero voxel) and `--json PATH` (also write the per-case scores and summary).
+Cases whose label is missing, that fail to load or segment, or whose label is
+on a different voxel grid are skipped with a warning. The exit status is 0 if
+at least one case was scored, 1 otherwise.
+
+The metric is also usable on its own:
+
+```python
+from eval.metrics import dice_coefficient
+
+dice_coefficient("mask_torch.nii.gz", "mask_tf.nii.gz")   # every non-zero voxel
+dice_coefficient(mask, reference, label=1)                # SAH label only
 ```

@@ -6,8 +6,17 @@ dist/
 wheels/
 *.egg-info
 
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
 # Virtual environments
 .venv
 
 # TODO file
 TODO.md
+
+# Model weights are kept out of the repository
+weights/*
+!weights/README.md

@@ -4,8 +4,8 @@ Public, stable interface to ASAH segmentation.
 
 Everything a consumer needs (loading weights, choosing a device, reading a
 volume, predicting a mask, saving it) goes through `ASAHSegmenter`. The
-modules it wraps (`model`, `processing`, `inference`, `io`, `serialization`)
-are implementation details and may change between minor releases; the names
+modules it wraps (`model`, `processing`, `inference`, `io`) are
+implementation details and may change between minor releases; the names
 exported here (see `__all__`) keep their signatures and behaviour.
 
 Exported Classes:
@@ -91,8 +91,9 @@ class ASAHSegmenter:
         Parameters
         ----------
         model : Module
-            A model with loaded weights (normally built by `from_checkpoint`
-            or `from_legacy_checkpoint`)
+            A model with loaded weights (normally built by `from_checkpoint`;
+            legacy TensorFlow checkpoints are converted once by the
+            development script `scripts/convert_legacy_checkpoint.py`)
 
         device : str or device
             `"auto"` (CUDA if available, otherwise CPU), or any torch device
@@ -181,47 +182,6 @@ class ASAHSegmenter:
         except RuntimeError as exc:
             raise CheckpointError(
                 f"Checkpoint '{path}' does not match the model: {exc}"
-            ) from exc
-
-        return cls(model, device=device, batch_size=batch_size,
-                   preprocessing=preprocessing, nifti_version=nifti_version,
-                   checkpoint=path)
-
-
-    @classmethod
-    def from_legacy_checkpoint(
-        cls,
-        path: str | PathLike,
-        *,
-        device: DeviceLike = "auto",
-        batch_size: int = 16,
-        preprocessing: PreprocessingConfiguration | None = None,
-        nifti_version: NiftiVersion = 1
-    ) -> ASAHSegmenter:
-        """
-        Builds a segmenter from the original TensorFlow checkpoint.
-
-        Requires the `legacy` optional dependencies (TensorFlow). Use it once
-        and persist the result with `save_checkpoint`; production should load
-        the PyTorch checkpoint with `from_checkpoint`.
-
-        Raises
-        ------
-        CheckpointError
-            If TensorFlow is not installed or the checkpoint cannot be read
-        """
-        from asah_segmentation import serialization
-
-        if not serialization.TF_AVAILABLE:
-            raise CheckpointError(
-                "TensorFlow is required to read legacy checkpoints: install "
-                "asah-segmentation with the `legacy` extra."
-            )
-        try:
-            model = serialization.load_legacy_model(str(path))
-        except Exception as exc:
-            raise CheckpointError(
-                f"Could not convert legacy checkpoint '{path}': {exc}"
             ) from exc
 
         return cls(model, device=device, batch_size=batch_size,

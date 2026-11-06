@@ -1,14 +1,15 @@
-""" serialization.py
+""" convert_legacy_checkpoint.py
 
-Deserialize legacy TensorFlow checkpoints.
-Requires TF as a dependency (consider installing with `legacy` optional
-dependencies).
+Convert legacy TensorFlow checkpoint to PyTorch state dict.
+Requires TF as a dependency (install with `uv sync --group legacy`).
 
-Exported Functions:
-* load_legacy_model: load model checkpoint from legacy TensorFlow
-raw data.
+Conversion is a one-off development task: it is run once on the legacy
+checkpoint, which is thence loaded in production with
+`ASAHSegmenter.from_checkpoint`, which needs neither TensorFlow nor this
+script.
 
 """
+
 
 try:
     import tensorflow as tf
@@ -17,8 +18,6 @@ except ImportError:
     TF_AVAILABLE = False
 
 import torch
-
-from asah_segmentation.model import ASAHSegmentationNet
 
 
 TF_TO_TORCH_BLOCKS = [
@@ -40,32 +39,13 @@ TF_TO_TORCH_PARAMS = [
     ("prelu_acti_/alpha", 2, "weight"),
 ]
 
-def load_legacy_model(path: str) -> ASAHSegmentationNet:
-    """
-    Loads legacy TensorFlow weigths to PyTorch model.
-
-    Parameters
-    ----------
-    path : str
-        The path to the TF checkpoint folder
-    
-    Returns
-    -------
-    ASAHSegmentationNet
-        The loaded model
-    """
+def convert_legacy_checkpoint(src: str, dest: str) -> None:
 
     if not TF_AVAILABLE:
         raise ImportError("TensorFlow is required to perform legacy model "
-                          "weights conversion (install the `legacy` extra).")
+                          "weights conversion (`uv sync --group legacy`).")
 
-    model = ASAHSegmentationNet()
-    model.eval()
-    with torch.no_grad():
-        model(torch.zeros(1, 1, 32, 32))    
-    state_dict = model.state_dict()
-
-    reader = tf.train.load_checkpoint(path)
+    reader = tf.train.load_checkpoint(src)
     
     mapping = {}
     for tf_block, torch_block, layers in TF_TO_TORCH_BLOCKS:
@@ -76,8 +56,7 @@ def load_legacy_model(path: str) -> ASAHSegmentationNet:
                 mapping[source] = target
     mapping["NoNewNet/R1_FC/2/conv_/w"] = "head.blocks.8.weight"
 
-    assert len(mapping) == len(state_dict)
-
+    state_dict = {}
     for source, target in mapping.items():
         array = reader.get_tensor(source)
 
@@ -88,6 +67,17 @@ def load_legacy_model(path: str) -> ASAHSegmentationNet:
 
         state_dict[target] = tensor
 
-    model.load_state_dict(state_dict, strict=True)
+    torch.save(state_dict, dest)
 
-    return model
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Convert legacy TensorFlow checkpoint to PyTorch state dict."
+    )
+    parser.add_argument("src", help="path or prefix of the legacy TF checkpoint")
+    parser.add_argument("dest", help="output path of the PyTorch state dict")
+    args = parser.parse_args()
+
+    convert_legacy_checkpoint(args.src, args.dest)

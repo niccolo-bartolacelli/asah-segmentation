@@ -1,12 +1,15 @@
 [project]
 name = "asah-segmentation"
-version = "0.2.0"
+version = "0.3.0"
 description = "Aneurysmal Subarachnoid Hemorrhage segmentation on Non-Contrast CT Scans"
 readme = "README.md"
 authors = [
     { name = "Niccolò Bartolacelli", email = "niccolo.bartolacelli@gmail.com" }
 ]
 requires-python = ">=3.14"
+# Production inference only. Development tooling (eval/, scripts/, tests/)
+# lives outside the package, is not shipped, and must never be imported
+# from here.
 dependencies = [
     "nibabel>=5.4.2",
     "nilearn>=0.14.1",
@@ -18,7 +21,11 @@ dependencies = [
 requires = ["uv_build>=0.12.14,<0.13.0"]
 build-backend = "uv_build"
 
-[project.optional-dependencies]
+# Dependency groups are local to this repository: they are not part of the
+# published package metadata, so production installs never see them.
+#   uv sync                  core (eval/ and tests/ need nothing more)
+#   uv sync --group legacy   + TensorFlow, for scripts/convert_legacy_checkpoint.py
+[dependency-groups]
 legacy = [
-    "tensorflow>=2.22.0rc0"
+    "tensorflow>=2.22.0rc0",
 ]

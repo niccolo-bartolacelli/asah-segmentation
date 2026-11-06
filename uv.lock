@@ -21,7 +21,7 @@ wheels = [
 
 [[package]]
 name = "asah-segmentation"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "nibabel" },
@@ -30,7 +30,7 @@ dependencies = [
     { name = "torch" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 legacy = [
     { name = "tensorflow" },
 ]
@@ -40,10 +40,12 @@ requires-dist = [
     { name = "nibabel", specifier = ">=5.4.2" },
     { name = "nilearn", specifier = ">=0.14.1" },
     { name = "numpy", specifier = ">=2.5.3" },
-    { name = "tensorflow", marker = "extra == 'legacy'", specifier = ">=2.22.0rc0" },
     { name = "torch", specifier = ">=2.14.0" },
 ]
-provides-extras = ["legacy"]
+
+[package.metadata.requires-dev]
+dev = []
+legacy = [{ name = "tensorflow", specifier = ">=2.22.0rc0" }]
 
 [[package]]
 name = "astunparse"
