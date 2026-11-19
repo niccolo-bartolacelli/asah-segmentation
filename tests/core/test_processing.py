@@ -15,7 +15,6 @@ class PreprocessingConfigurationTest(unittest.TestCase):
 
     def test_defaults_match_published_model(self):
         cfg = PreprocessingConfiguration()
-        self.assertEqual(cfg.downsample, (2, 2))
         self.assertEqual(cfg.shape, (256, 256))
         self.assertEqual(cfg.clip, (0, 150))
         self.assertEqual(np.dtype(cfg.dtype), np.int16)
@@ -81,9 +80,32 @@ class PreprocessVolumeTest(unittest.TestCase):
         self.assertEqual(self.out.shape, (256, 256, self.img.shape[2]))
 
     def test_affine_scaled_in_plane_only(self):
+        # 96 x 80 source onto a 256 x 256 grid: spacing scales by shape ratio.
         expected = self.img.affine.copy()
-        expected[:3, :3] = self.img.affine[:3, :3] @ np.diag((2, 2, 1))
+        expected[:3, :3] = self.img.affine[:3, :3] @ np.diag(
+            (96 / 256, 80 / 256, 1))
         np.testing.assert_allclose(self.out.affine, expected)
+
+    def test_scale_depends_on_input_shape(self):
+        cases = (((512, 512, 2), (2.0, 2.0)),
+                 ((256, 256, 2), (1.0, 1.0)),
+                 ((512, 256, 2), (2.0, 1.0)))
+        for shape, factors in cases:
+            with self.subTest(shape=shape):
+                img = make_ct(shape=shape)
+                out = Processor().preprocess_volume(img)
+                self.assertEqual(out.shape, (256, 256, shape[2]))
+                expected = img.affine.copy()
+                expected[:3, :3] = img.affine[:3, :3] @ np.diag((*factors, 1))
+                np.testing.assert_allclose(out.affine, expected)
+
+    def test_matching_shape_is_identity_resampling(self):
+        img = make_ct(shape=(256, 256, 2))
+        out = Processor(PreprocessingConfiguration(clip=None, dtype=np.int16)
+                        ).preprocess_volume(img)
+        np.testing.assert_allclose(out.affine, img.affine)
+        np.testing.assert_array_equal(np.asarray(out.dataobj),
+                                      np.asarray(img.dataobj))
 
     def test_clipped_and_cast(self):
         data = np.asarray(self.out.dataobj)
@@ -92,7 +114,7 @@ class PreprocessVolumeTest(unittest.TestCase):
         self.assertLessEqual(data.max(), 150)
 
     def test_custom_configuration(self):
-        cfg = PreprocessingConfiguration(downsample=(1, 1), shape=(64, 32),
+        cfg = PreprocessingConfiguration(shape=(64, 32),
                                          clip=(-10, 10), dtype=np.float32)
         out = Processor(cfg).preprocess_volume(self.img)
         self.assertEqual(out.shape, (64, 32, 3))
@@ -100,11 +122,12 @@ class PreprocessVolumeTest(unittest.TestCase):
         self.assertEqual(data.dtype, np.float32)
         self.assertTrue(((data >= -10) & (data <= 10)).all())
 
-    def test_outside_field_of_view_is_filled_with_minimum(self):
-        # The 48 x 40 mm scan sits inside a 256 x 256 mm grid: the padding
-        # takes the volume minimum, which the clip then raises to 0.
-        data = np.asarray(self.out.dataobj)
-        self.assertEqual(data[-1, -1, 0], 0)
+    def test_field_of_view_is_preserved(self):
+        # The resampled grid covers the source extent (48 x 40 mm) instead of
+        # a fixed-spacing 128 x 128 mm grid padded with the volume minimum.
+        src_extent = np.array(self.img.shape[:2]) * self.img.header.get_zooms()[:2]
+        out_extent = np.array(self.out.shape[:2]) * self.out.header.get_zooms()[:2]
+        np.testing.assert_allclose(out_extent, src_extent)
 
 
 class VolumeToSlicesTest(unittest.TestCase):

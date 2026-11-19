@@ -4,7 +4,7 @@ import nibabel as nib
 import numpy as np
 import torch
 
-from eval.metrics import dice_coefficient
+from eval.metrics import absolute_volume_difference, dice_coefficient
 from tests.helpers import TempDirTestCase, make_ct
 
 
@@ -84,6 +84,64 @@ class DiceCoefficientTest(TempDirTestCase):
         b = nib.Nifti1Image(data, np.diag((2.0, 2.0, 2.0, 1.0)))
         with self.assertRaises(ValueError):
             dice_coefficient(a, b)
+
+
+class AbsoluteVolumeDifferenceTest(unittest.TestCase):
+
+    def test_identical_masks(self):
+        m = _mask(voxels=[(0, 0, 0), (1, 1, 1)])
+        self.assertEqual(absolute_volume_difference(m, m, voxel_volume=1.0),
+                         0.0)
+
+    def test_counts_voxels_not_overlap(self):
+        a = _mask(voxels=[(0, 0, 0), (0, 1, 0)])
+        b = _mask(voxels=[(5, 5, 1), (6, 6, 1), (7, 7, 1)])
+        # | 2 - 3 | voxels of 1000 mm³ = 1 mL
+        self.assertAlmostEqual(
+            absolute_volume_difference(a, b, voxel_volume=1000.0), 1.0)
+
+    def test_is_symmetric(self):
+        a = _mask(voxels=[(0, 0, 0)])
+        b = _mask(voxels=[(0, 0, 0), (1, 1, 1), (2, 2, 1)])
+        self.assertEqual(absolute_volume_difference(a, b, voxel_volume=2.0),
+                         absolute_volume_difference(b, a, voxel_volume=2.0))
+
+    def test_voxel_volume_from_affine(self):
+        a = _mask(voxels=[(0, 0, 0)])
+        b = _mask(voxels=[(0, 0, 0), (1, 1, 1), (2, 2, 1)])
+        affine = np.diag((0.5, -0.5, 5.0, 1.0))  # 1.25 mm³, flipped axis
+        expected = 2 * 1.25 / 1000
+        img_a, img_b = nib.Nifti1Image(a, affine), nib.Nifti1Image(b, affine)
+        self.assertAlmostEqual(absolute_volume_difference(img_a, img_b),
+                               expected)
+        self.assertAlmostEqual(absolute_volume_difference(img_a, b), expected)
+        self.assertAlmostEqual(absolute_volume_difference(a, img_b), expected)
+        # An explicit voxel volume wins over the affine.
+        self.assertAlmostEqual(
+            absolute_volume_difference(img_a, img_b, voxel_volume=1000.0), 2.0)
+
+    def test_label_selection(self):
+        a = np.array([0, 1, 2, 2])
+        b = np.array([0, 1, 1, 2])
+        self.assertEqual(absolute_volume_difference(a, b, label=1,
+                                                    voxel_volume=1000.0), 1.0)
+        self.assertEqual(absolute_volume_difference(a, b, label=None,
+                                                    voxel_volume=1000.0), 0.0)
+
+    def test_arrays_need_voxel_volume(self):
+        m = _mask(voxels=[(0, 0, 0)])
+        with self.assertRaises(ValueError):
+            absolute_volume_difference(m, m)
+
+    def test_grid_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            absolute_volume_difference(_mask((8, 8, 2)), _mask((8, 8, 3)),
+                                       voxel_volume=1.0)
+        data = _mask(voxels=[(0, 0, 0)])
+        with self.assertRaises(ValueError):
+            absolute_volume_difference(
+                nib.Nifti1Image(data, np.eye(4)),
+                nib.Nifti1Image(data, np.diag((2.0, 2.0, 2.0, 1.0))))
 
 
 if __name__ == "__main__":
