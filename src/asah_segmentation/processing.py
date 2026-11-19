@@ -142,8 +142,10 @@ class PreprocessingConfiguration:
     """
     Processing configuration, applied in-plane to each slice of the processed
     volume.
+
+    The in-plane resampling factor is not configurable: it is computed per
+    image so that the source field of view is mapped onto `shape`.
     """
-    downsample: tuple[int, int] = (2, 2)
     shape: tuple[int, int] = (256, 256)
     clip: tuple[int, int] = (0, 150)
     dtype: npt.DTypeLike=np.int16
@@ -197,6 +199,12 @@ class Processor:
         """
         Preprocesses a NIfTI volume with the object configuration setup.
 
+        Each slice is resampled onto the configured in-plane `shape`, covering
+        the same field of view as the source: the voxel spacing is scaled by
+        `img.shape[:2] / shape` per axis (e.g. 2 for a 512x512 source and a
+        256x256 target, 1 for a source already at 256x256). The slice axis is
+        left untouched.
+
         For default preprocessing values, see `PreprocessingConfiguration`.
 
         Parameters
@@ -215,9 +223,10 @@ class Processor:
             If the provided image does not contain a valid affine matrix
         """
 
+        scale = np.asarray(img.shape[:2], dtype=float) / self.config.shape
         new_affine = img.affine.copy()
         new_affine[:3, :3] = np.matmul(img.affine[:3, :3],
-                                       np.diag((*self.config.downsample, 1)))
+                                       np.diag((*scale, 1)))
         min_value = img.get_fdata().min()
         tmp_img = nilearn.image.resample_img(img,
                                              target_affine=new_affine,
