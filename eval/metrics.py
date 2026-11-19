@@ -10,6 +10,8 @@ Exported Types:
 
 Exported Functions:
 * dice_coefficient: Dice coefficient of one label in two masks.
+* absolute_volume_difference: absolute difference of the volume of one label
+  in two masks, in millilitres.
 
 """
 
@@ -67,10 +69,87 @@ def dice_coefficient(prediction: MaskSource,
         If the masks have different shapes or, when both are NIfTI images,
         different affines
     """
+    pred_fg, ref_fg, _ = _foregrounds(prediction, reference, label, atol)
+
+    total = int(np.count_nonzero(pred_fg)) + int(np.count_nonzero(ref_fg))
+    if total == 0:
+        return float(empty_score)
+
+    intersection = int(np.count_nonzero(pred_fg & ref_fg))
+    return 2.0 * intersection / total
+
+
+def absolute_volume_difference(prediction: MaskSource,
+                               reference: MaskSource,
+                               label: int | None = None,
+                               voxel_volume: float | None = None,
+                               atol: float = 1e-4) -> float:
+    """
+    Computes the absolute volume difference of a label in two masks.
+
+    AVD = | |P| - |R| | * v, where P and R are the voxels of `prediction` and
+    `reference` holding `label` and v is the volume of one voxel.
+
+    Parameters
+    ----------
+    prediction : str, PathLike, Nifti1Image, Nifti2Image, Tensor or ArrayLike
+        The predicted label map (a path is read with NiBabel)
+
+    reference : str, PathLike, Nifti1Image, Nifti2Image, Tensor or ArrayLike
+        The label map to compare against
+
+    label : int, optional
+        The label to measure; if None, every non-zero voxel is foreground
+
+    voxel_volume : float, optional
+        The volume of one voxel in mm³; if None, it is read from the affine of
+        whichever mask is a NIfTI image (spatial units assumed to be mm)
+
+    atol : float
+        Absolute tolerance on the affine matrices when both masks are NIfTI
+        images
+
+    Returns
+    -------
+    float
+        The difference in millilitres, >= 0
+
+    Raises
+    ------
+    ValueError
+        If the masks have different shapes or, when both are NIfTI images,
+        different affines; or if `voxel_volume` is None and neither mask is a
+        NIfTI image
+    """
+    pred_fg, ref_fg, affine = _foregrounds(prediction, reference, label, atol)
+    if voxel_volume is None:
+        if affine is None:
+            raise ValueError("voxel_volume is required when neither mask is "
+                             "a NIfTI image.")
+        voxel_volume = abs(float(np.linalg.det(affine[:3, :3])))
+
+    voxels = abs(int(np.count_nonzero(pred_fg)) -
+                 int(np.count_nonzero(ref_fg)))
+    return voxels * voxel_volume / 1000.0  # mm³ -> mL
+
+
+def _foregrounds(
+        prediction: MaskSource,
+        reference: MaskSource,
+        label: int | None,
+        atol: float
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """
+    Boolean foreground of `label` in both masks, checked to share a grid,
+    and the affine of the first one that is a NIfTI image (None if neither).
+    """
     pred_img = _as_image(prediction)
     ref_img = _as_image(reference)
     pred = _mask_data(pred_img if pred_img is not None else prediction)
     ref = _mask_data(ref_img if ref_img is not None else reference)
+
+    pred = pred.squeeze()
+    ref = ref.squeeze()
 
     if pred.shape != ref.shape:
         raise ValueError(f"Mask shapes differ: {pred.shape} and {ref.shape}.")
@@ -84,12 +163,8 @@ def dice_coefficient(prediction: MaskSource,
     else:
         pred_fg, ref_fg = pred == label, ref == label
 
-    total = int(np.count_nonzero(pred_fg)) + int(np.count_nonzero(ref_fg))
-    if total == 0:
-        return float(empty_score)
-
-    intersection = int(np.count_nonzero(pred_fg & ref_fg))
-    return 2.0 * intersection / total
+    img = pred_img if pred_img is not None else ref_img
+    return pred_fg, ref_fg, None if img is None else img.affine
 
 
 def _as_image(
