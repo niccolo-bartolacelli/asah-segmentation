@@ -84,6 +84,20 @@ The script writes a PyTorch `state_dict`; production code then only needs
 `ASAHSegmenter.from_checkpoint("weights/asah_nonewnet.pt")`.
 
 
+## Results
+
+The original authors validated the TensorFlow model on external sets (their README): patient level, sensitivity 100%
+(Swiss, 1100 scans), 97.3% (Indian, 279) and 100% (Finnish, 519 consecutive emergency scans), specificity 57.7%, 86.0% and 87.3%;
+slice level, sensitivity 87.4% (Swiss) and 75.3% (Finnish), specificity 95.3% and 98.8%.
+
+**Parity with the original**: running both the original implementation and the PyTorch port on a subset of 41 images of the original Indian validation dataset gave the following results, which provide strong evidence of parity:
+
+|         | mean   | std    | median | q1      | q3     | min    | max    |
+|---------|--------|--------|--------|---------|--------|--------|--------|
+|Dice     | 0.9995 | 0.0018 | 0.9999 |  0.9997 | 1.0000 | 0.9886 | 1.0000 |
+|AVD (mL) | 0.0011 | 0.0019 | 0.0006 |  0.0000 | 0.0011 | 0.0000 | 0.0087 |
+
+
 ## Development
 
 New code goes in `src/asah_segmentation` only if production inference needs
@@ -104,28 +118,36 @@ uv run --no-dev python -m unittest discover -s tests/core -t .     # core, produ
 
 ### Evaluation
 
-`eval/evaluate.py` segments every scan (`*.nii`, `*.nii.gz`) in a folder with
-the real checkpoint and scores it against the same-named label in another
-folder with the Dice coefficient. Scans and weights are never committed: put
-the weights in the git-ignored `weights/` folder.
+`eval/evaluate.py` compares two folders of masks (`*.nii`, `*.nii.gz`),
+matched by file name: the masks to evaluate in SOURCE (typically this
+package's segmentations) and the reference masks in TARGET, which can be
+manual annotations, the legacy TensorFlow model's output, or another model's.
+Each case is scored with the Dice coefficient and the absolute volume
+difference (AVD, in mL, from the voxel size in the affine); the per-case
+results are followed by a summary of each metric (mean, standard deviation,
+median, quartiles, min, max) and the worst case for each. Masks are never
+committed.
 
 ```bash
-uv run python eval/evaluate.py SOURCE TARGET                       # weights/asah_nonewnet.pt
-uv run python eval/evaluate.py SOURCE TARGET --device cpu --json dice.json
+uv run python eval/evaluate.py SOURCE TARGET
+uv run python eval/evaluate.py SOURCE TARGET --output results.json   # full report
+uv run python eval/evaluate.py SOURCE TARGET --output results.csv    # one row per case
 ```
 
-Options: `--checkpoint` (default `weights/asah_nonewnet.pt`), `--device`
-(default `auto`), `--batch-size` (default 16), `--label` (default: every
-non-zero voxel) and `--json PATH` (also write the per-case scores and summary).
-Cases whose label is missing, that fail to load or segment, or whose label is
-on a different voxel grid are skipped with a warning. The exit status is 0 if
-at least one case was scored, 1 otherwise.
+Options: `--label` (default: every non-zero voxel) and `-o/--output PATH`
+(also write the results: a JSON report with per-case results, summary and
+skipped cases, or per-case rows if PATH ends in `.csv`). Masks present in only
+one folder, that fail to load, or whose counterpart is on a different voxel
+grid are skipped with a warning. The exit status is 0 if at least one case was
+scored, 1 otherwise.
 
-The metric is also usable on its own:
+The metrics are also usable on their own:
 
 ```python
-from eval.metrics import dice_coefficient
+from eval.metrics import absolute_volume_difference, dice_coefficient
 
 dice_coefficient("mask_torch.nii.gz", "mask_tf.nii.gz")   # every non-zero voxel
 dice_coefficient(mask, reference, label=1)                # SAH label only
+absolute_volume_difference("mask_torch.nii.gz", "mask_tf.nii.gz")   # mL
+absolute_volume_difference(mask, reference, voxel_volume=1.25)      # arrays: mm³ per voxel
 ```
