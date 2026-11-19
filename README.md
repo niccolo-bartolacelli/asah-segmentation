@@ -151,3 +151,14 @@ dice_coefficient(mask, reference, label=1)                # SAH label only
 absolute_volume_difference("mask_torch.nii.gz", "mask_tf.nii.gz")   # mL
 absolute_volume_difference(mask, reference, voxel_volume=1.25)      # arrays: mm³ per voxel
 ```
+
+
+## License
+
+Copyright (C) 2026 Niccolò Bartolacelli
+
+Derived from [segment-ncct-sah](https://github.com/athanell/segment-ncct-sah) by [@athanell](https://github.com/athanell), and distributed under the same terms.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
+
+This program is experimental software, without any warranty. See the [LICENSE](LICENSE) file for details.

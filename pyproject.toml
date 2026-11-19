@@ -3,6 +3,8 @@ name = "asah-segmentation"
 version = "0.3.0"
 description = "Aneurysmal Subarachnoid Hemorrhage segmentation on Non-Contrast CT Scans"
 readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 authors = [
     { name = "Niccolò Bartolacelli", email = "niccolo.bartolacelli@gmail.com" }
 ]
